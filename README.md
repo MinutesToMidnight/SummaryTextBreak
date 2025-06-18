@@ -22,6 +22,7 @@ How to run the code:
    model_name = "google/pegasus-cnn_dailymail"
    
    model = PegasusForConditionalGeneration.from_pretrained(model_name)
+   
    tokenizer = PegasusTokenizer.from_pretrained(model_name)
    
    --------------------------------------------------------
@@ -31,6 +32,7 @@ How to run the code:
    model_name = "facebook/bart-large-cnn"
    
    model = BartForConditionalGeneration.from_pretrained(model_name)
+   
    tokenizer = BartTokenizer.from_pretrained(model_name)
 
    ---------------------------------------------------------
@@ -40,6 +42,7 @@ How to run the code:
    model_name = "t5-base"
 
    model = T5ForConditionalGeneration.from_pretrained(model_name)
+   
    tokenizer = T5Tokenizer.from_pretrained(model_name)
 
 5) Copy the code from the file "code" in this repository and paste to your IDE
