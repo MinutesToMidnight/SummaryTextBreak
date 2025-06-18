@@ -44,4 +44,5 @@ How to run the code:
 
 5) Copy the code from the file "code" in this repository and paste to your IDE
 6) Execute in python terminal or in cmd: streamlit run "E:\Path\to\file\python_file.py"
-That's it.
+That's it. Follow the isntructions on the web page. Don't forget to press Ctrl+Enter after you have entered the text manually.
+If there is a file pinned, the model will take the file. Otherwise a manually entered text will be chosen
