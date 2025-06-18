@@ -1,6 +1,46 @@
+Provided code contains methods of splitting the text according to the LLM parameters so that the LLM could summarize
+the document without truncating the length of the original text
+
 How to run the code:
 1) Install Python and IDE (PyCharm, Visual Studio Code, etc)
 2) Install libraries
-   As an example execute the following command in python terminal: pip (or pip3) install torch, transformers, thinc==8.3.5, numpy, nltk, streamlit
-3) Execute in python terminal or in cmd: streamlit run "E:\Path\to\file\python_file.py"
+   pip install --upgrade pip setuptools wheel
+   pip install numpy
+   pip install torch
+   pip install transformers
+   pip install nltk
+   pip install protobuf
+   pip install streamlit
+   pip install hf_xet
+   pip install cmake
+   pip install sentencepeice
+   In case errors occur follow the instructions of pip
+3) Run the following codes to download the models locally before using them
+   
+   from transformers import PegasusTokenizer, PegasusForConditionalGeneration
+
+   model_name = "google/pegasus-cnn_dailymail"
+   
+   model = PegasusForConditionalGeneration.from_pretrained(model_name)
+   tokenizer = PegasusTokenizer.from_pretrained(model_name)
+   --------------------------------------------------------
+
+   from transformers import BartTokenizer, BartForConditionalGeneration
+
+   model_name = "facebook/bart-large-cnn"
+   
+   model = BartForConditionalGeneration.from_pretrained(model_name)
+   tokenizer = BartTokenizer.from_pretrained(model_name)
+
+   ---------------------------------------------------------
+
+   from transformers import T5Tokenizer, T5ForConditionalGeneration
+
+   model_name = "t5-base"
+
+   model = T5ForConditionalGeneration.from_pretrained(model_name)
+   tokenizer = T5Tokenizer.from_pretrained(model_name)
+
+4) Copy the code from the file "code" in this repository and paste to your IDE
+5) Execute in python terminal or in cmd: streamlit run "E:\Path\to\file\python_file.py"
 That's it.
