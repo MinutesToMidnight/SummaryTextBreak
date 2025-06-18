@@ -23,6 +23,7 @@ How to run the code:
    
    model = PegasusForConditionalGeneration.from_pretrained(model_name)
    tokenizer = PegasusTokenizer.from_pretrained(model_name)
+   
    --------------------------------------------------------
 
    from transformers import BartTokenizer, BartForConditionalGeneration
@@ -41,6 +42,6 @@ How to run the code:
    model = T5ForConditionalGeneration.from_pretrained(model_name)
    tokenizer = T5Tokenizer.from_pretrained(model_name)
 
-4) Copy the code from the file "code" in this repository and paste to your IDE
-5) Execute in python terminal or in cmd: streamlit run "E:\Path\to\file\python_file.py"
+5) Copy the code from the file "code" in this repository and paste to your IDE
+6) Execute in python terminal or in cmd: streamlit run "E:\Path\to\file\python_file.py"
 That's it.
