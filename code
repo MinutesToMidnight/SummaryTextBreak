@@ -166,7 +166,7 @@ class TextTiling:
 
 
 class IterativeSummary:
-    """Summarizes the text until the required size"""
+    """Summarizes the text to the required size"""
     def __init__(self, method_of_compression, tokenizer, process_func, model, model_token_limit, device="cpu",
                  compression_ratio=None):
         # It is supposed that you could define the max length of the summary as the percentage of the length of the original text
