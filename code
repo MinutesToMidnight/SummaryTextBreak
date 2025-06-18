@@ -1,0 +1,248 @@
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+import nltk
+import torch
+import streamlit as st
+
+
+# pip install nltk, torch, transformers, protobuf, thinc==8.3.5, numpy, streamlit
+
+nltk.download('punkt')
+nltk.download('stopwords')
+nltk.download('punkt_tab')
+
+def reformat_text_style(text):
+    text = text.replace(" .", ".").replace("<n>", " <n> ")
+    text = ' '.join([x for x in text.split("\n") if x != ""])
+    text = text.split()
+    cur_len = 0
+    for i in range(len(text)):
+        if len(text[i]) > 110:
+            text[i] += "\n"
+        if text[i] == "<n>":
+            text[i] = "\n"
+            cur_len = 0
+        elif cur_len + len(text[i]) > 110:
+            text[i-1] += "\n"
+            cur_len = 0
+        else:
+            cur_len += len(text[i])
+    return "".join([x + " " if x[-1] != '\n' else x for x in text])
+
+
+def process_summary(segments, tokenizer, model, token_limit, device):
+    summary = ""
+    for sub in segments:
+        # Токенизируем текущий сегмент
+        inputs = tokenizer(sub, return_tensors="pt", truncation=True)
+        # Перемещаем все входные тензоры на устройство (GPU, если доступен)
+        inputs = {k: v.to(device) for k, v in inputs.items()}
+
+        # Генерация суммаризации
+        summary_ids = model.generate(
+            inputs["input_ids"],
+            num_beams=5,  # Улучшает качество генерации
+            max_length=token_limit,  # Ограничение длины выходного текста
+            early_stopping=True,
+            no_repeat_ngram_size=5
+        )
+
+        # Декодирование результата
+        summary += tokenizer.decode(summary_ids[0], skip_special_tokens=True) + " "
+    return summary
+
+
+class SlidingWindowOverlapping:
+    def __init__(self, token_limit, tokenizer, overlap_size=0.2):
+        self.token_limit = token_limit
+        self.tokenizer = tokenizer
+        self.nonoverlap_size = int((1 - overlap_size) * token_limit)
+
+    def compress(self, text):
+        segments = []
+        tokens = self.tokenizer(text, return_tensors="pt")["input_ids"][0]
+        length = tokens.size(0)
+        l, r = 0, self.token_limit
+        while r < length:
+            segments.append(tokens[l:r])
+            l += self.nonoverlap_size
+            r += self.nonoverlap_size
+        if l < length:
+            segments.append(tokens[l:])
+        return [self.tokenizer.decode(x) for x in segments]
+
+
+class TextTiling:
+    def __init__(self, token_limit, tokenizer):
+        self.token_limit = token_limit
+        self.ttt = nltk.TextTilingTokenizer()
+        self.tokenizer = tokenizer
+        self.regexp = nltk.tokenize.RegexpTokenizer(r"[^,;:]+")
+
+    def split_sent_by_punct(self, sent):
+        sub_sent = self.regexp.tokenize(sent)
+        sub_sent = [sub.strip() for sub in sub_sent]
+        segments = []
+        current_segment = []
+        current_token_count = 0
+        for sub in sub_sent:
+            token_count = len(self.tokenizer(sub, add_special_tokens=False).data["input_ids"])
+            if token_count > self.token_limit:
+                raise Exception(f"""Can't proccess subsentence part. Too little token limit. Increase the limit of tokens.
+                Exceeded limit at {token_count} tokens""")
+            if token_count + current_token_count <= self.token_limit:
+                current_segment.append(sub)
+                current_token_count += token_count
+            else:
+                if current_segment:
+                    segments.append(" ".join(current_segment))
+                current_segment = [sub]
+                current_token_count = token_count
+        if current_segment:
+            segments.append(" ".join(current_segment))
+        return segments
+
+    def split_seg_by_sent(self, seg):
+        sentences = nltk.sent_tokenize(seg)
+        segments = []
+        current_segment = []
+        current_token_count = 0
+        for sent in sentences:
+            token_count = len(self.tokenizer(sent, add_special_tokens=False).data["input_ids"])
+            if token_count > self.token_limit:
+                if current_segment:
+                    segments.append(" ".join(current_segment))
+                current_segment = []
+                current_token_count = 0
+                sub_sentences = self.split_sent_by_punct(sent)
+                segments.append(" ".join(sub_sentences))
+            elif token_count + current_token_count <= self.token_limit:
+                current_segment.append(sent)
+                current_token_count += token_count
+            else:
+                if current_segment:
+                    segments.append(" ".join(current_segment))
+                current_segment = [sent]
+                current_token_count = token_count
+        if current_segment:
+            segments.append(" ".join(current_segment))
+        return segments
+
+    def compress(self, text):
+        try:
+            segments = self.ttt.tokenize(text)
+        except ValueError:
+            print("TextTiling[Info]: No semantic breaks were found")
+            segments = [text]
+        res = []
+        for seg in segments:
+            ln = len(self.tokenizer(seg, add_special_tokens=False).data["input_ids"])
+            if ln > self.token_limit:
+                splitted_segments = self.split_seg_by_sent(seg)
+                res.extend(splitted_segments)
+            else:
+                res.append(seg)
+        return res
+
+
+class IterativeSummary:
+    def __init__(self, method_of_compression, tokenizer, process_func, model, model_token_limit, device="cpu",
+                 compression_ratio=None):
+        if compression_ratio is None:
+            raise ValueError("The limit must be defined as the ratio of the length of the original text")
+        if not (0 <= compression_ratio < 1):
+            raise ValueError("Compression ratio must be in the range [0, 1)")
+        self.method = method_of_compression
+        self.process_func = process_func
+        self.compression_ratio = compression_ratio
+        self.tokenizer = tokenizer
+        self.model = model
+        self.model_token_limit = model_token_limit
+        self.device = device
+
+    def compress(self, text):
+        current_token_len = self.tokenizer(text, return_tensors="pt")["input_ids"].size(1)
+        token_limit = max(int(current_token_len * self.compression_ratio), self.model_token_limit)
+        while current_token_len > token_limit:
+            segments = self.method.compress(text)
+            text = self.process_func(
+                segments=segments,
+                tokenizer=self.tokenizer,
+                model=self.model,
+                token_limit=self.model_token_limit,
+                device=self.device)
+            current_token_len = self.tokenizer(text, return_tensors="pt")["input_ids"].size(1)
+        return text
+
+
+def main():
+    st.title("Приложение для саммаризации текста")
+    st.write("Выберите модель, метод разбиения текста и параметры для итеративной саммаризации.")
+
+    # Боковая панель для выбора параметров
+    st.sidebar.header("Настройки")
+
+    # Выбор модели
+    model_option = st.sidebar.selectbox(
+        "Выберите модель:",
+        ("facebook/bart-large-cnn", "t5-base", "google/pegasus-cnn_dailymail")
+    )
+
+    # Выбор метода разбиения
+    split_method_option = st.sidebar.selectbox(
+        "Выберите метод разбиения:",
+        ("TextTiling", "SlidingWindowOverlapping")
+    )
+
+    # Параметры
+    token_limit = st.sidebar.slider("Лимит токенов (на сегмент)", 128, 1024, 100, step=50)
+    compression_ratio = st.sidebar.slider("Коэффициент сжатия (0-1)", 0.05, 0.9, 0.2, step=0.05)
+
+    # Ввод текста:
+    st.sidebar.header("Источник текста")
+    uploaded_file = st.sidebar.file_uploader("Загрузите .txt файл", type="txt")
+    manual_input = st.sidebar.text_area("Или введите текст вручную", height=200)
+
+    if uploaded_file is not None:
+        text = uploaded_file.read().decode("utf-8")
+    else:
+        text = manual_input
+
+    if st.button("Запустить саммаризацию") and text.strip() != "":
+        st.info("Загружаем выбранную модель и токенизатор...")
+
+        model_name = model_option  # например, "facebook/bart-large-cnn"
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        model = AutoModelForSeq2SeqLM.from_pretrained(model_name).to(device)
+
+        st.info("Настраиваем алгоритм разбиения текста...")
+        # Выбираем метод разбиения
+        if split_method_option == "TextTiling":
+            splitting_method = TextTiling(token_limit, tokenizer)
+        else:
+            splitting_method = SlidingWindowOverlapping(token_limit, tokenizer, overlap_size=0.2)
+
+        iterative = IterativeSummary(
+            method_of_compression=splitting_method,
+            tokenizer=tokenizer,
+            process_func=process_summary,
+            model=model,
+            model_token_limit=token_limit,
+            compression_ratio=compression_ratio,
+            device=device
+        )
+
+        st.info("Запускается саммаризация...")
+        # Получаем саммари:
+        summary_text = iterative.compress(text)
+        summary_text = reformat_text_style(summary_text)
+
+        st.subheader("Результат:")
+        st.write(summary_text)
+    else:
+        st.warning("Пожалуйста, введите текст вручную или загрузите файл.")
+
+
+if __name__ == "__main__":
+    main()
+
