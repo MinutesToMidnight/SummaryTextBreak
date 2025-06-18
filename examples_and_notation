@@ -1,3 +1,5 @@
+Use soft wrap for better experience.
+
 Description of Methods:
 1) TextTiling
 TextTiling implements an iterative algorithm which has 3 functions called at different levels of splitting.
@@ -31,6 +33,16 @@ compression_ratio = 0.8
 token_limit = 550
 overlap_size = 0.2
 
+Quick conclusion:
+SlidingWindow is faster and simplier. TextTiling is more complex and allows consider the context better.
+Bart was designed for denosing - restoring text from noisy condition.
+T5 was designed for solving problems in the format <sequence-to-sequence>.
+Pegasus was designed for abstract summarization. The main parts of the texts were excluded and Pegasus needed to predict them.
+Since models have been trained for their own purposes, they might lack proprety of abstract summarization. Indeed, Pegasus solves the stated
+problem in the best way, but it has been trained on the dailymail dataset, which makes it hard for Pegasus to reconstruct the text. For example,
+output a brief summary for a book, having only the text of the book itself. It happens because the book contains the story or the speech. And the model
+needs to summarize the knowledge about it and then get the summary. The idea is served differently in books and in the news. There can not be TextRank problem solution summarizing the book.
+That's why each model should fine-tuned for the purpose that differs from the original one.
 
 1) Text (1537 words)
 Technology and Innovation
